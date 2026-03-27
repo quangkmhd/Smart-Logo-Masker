@@ -1,5 +1,7 @@
 # Smart Logo Masker 🛡️
 
+![Smart Logo Masker Showcase](asset/img2.png)
+
 Dự án này sử dụng YOLOv26 Segmentation để tự động phát hiện và che cho các logo cá độ (ví dụ: 1xbet, melbet, v.v.) trong video.
 
 ## 1. Cài đặt Dữ liệu (Setup Data)

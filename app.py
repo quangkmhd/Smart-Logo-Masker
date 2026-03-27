@@ -44,7 +44,7 @@ except Exception as e:
     print(f"Error loading model: {e}")
     model = None
 
-def process_video(input_video_path):
+def process_video(input_video_path, conf, iou, blur_intensity, mask_mode):
     if not input_video_path or model is None:
         return input_video_path
         
@@ -62,61 +62,61 @@ def process_video(input_video_path):
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(temp_output, fourcc, fps, (width, height))
     
-    # Progress bar parameters
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    print(f"Bắt đầu xử lý video có {total_frames} frames...")
+    print(f"Bắt đầu xử lý: {total_frames} frames, Conf: {conf}, IoU: {iou}, Blur: {blur_intensity}, Mode: {mask_mode}")
     
+    # Đảm bảo blur_intensity là số lẻ
+    if blur_intensity % 2 == 0:
+        blur_intensity += 1
+
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break
             
-        # Sử dụng model.predict() tương tự predict.py để nhận diện
-        results = model.predict(frame, conf=0.75, iou=0.45, verbose=False)
+        results = model.predict(frame, conf=conf, iou=iou, verbose=False)
         result = results[0]
         
-        # Che logo dựa trên kết quả Model
         if result.masks is not None:
-            # Nếu model có segmentation mask, dùng mask để làm mờ chính xác hình dạng logo
             masks = result.masks.data.cpu().numpy()
             for mask in masks:
                 mask_resized = cv2.resize(mask, (width, height))
-                # Làm mờ khung hình
-                blurred_frame = cv2.GaussianBlur(frame, (99, 99), 30)
-                # Ghép khung hình mờ vào đúng phần diện tích mask
-                mask_resized = np.expand_dims(mask_resized, axis=-1)
-                frame = np.where(mask_resized > 0.5, blurred_frame, frame).astype(np.uint8)
+                
+                if mask_mode == "blur":
+                    blurred_frame = cv2.GaussianBlur(frame, (blur_intensity, blur_intensity), 0)
+                    mask_resized = np.expand_dims(mask_resized, axis=-1)
+                    frame = np.where(mask_resized > 0.5, blurred_frame, frame).astype(np.uint8)
+                else: # solid
+                    solid_color = np.full_like(frame, (30, 30, 30)) 
+                    mask_resized = np.expand_dims(mask_resized, axis=-1)
+                    frame = np.where(mask_resized > 0.5, solid_color, frame).astype(np.uint8)
+                    
         elif result.boxes is not None:
-             # Fallback: Nếu không có mask mà chỉ có bounding box
              boxes = result.boxes.xyxy.cpu().numpy()
              for box in boxes:
                  x1, y1, x2, y2 = map(int, box)
-                 roi = frame[y1:y2, x1:x2]
-                 if roi.size > 0:
-                     roi = cv2.GaussianBlur(roi, (99, 99), 30)
-                     frame[y1:y2, x1:x2] = roi
+                 if x2 > x1 and y2 > y1:
+                     roi = frame[y1:y2, x1:x2]
+                     if mask_mode == "blur":
+                        roi = cv2.GaussianBlur(roi, (blur_intensity, blur_intensity), 0)
+                        frame[y1:y2, x1:x2] = roi
+                     else: # solid
+                        frame[y1:y2, x1:x2] = (30, 30, 30)
 
         out.write(frame)
         
     cap.release()
     out.release()
     
-    print("Hoàn tất chèn khung hình, đang chuyển đổi codec sang H.264 mp4 để có thể play mượt mà trên trình duyệt web...")
     try:
-        # Convert video sang h264 và map cả âm thanh (nếu có) từ video gốc
         subprocess.run([
-            "ffmpeg", "-y", 
-            "-i", temp_output, 
-            "-i", input_video_path, 
-            "-map", "0:v", 
-            "-map", "1:a?", 
-            "-c:v", "libx264", 
-            "-c:a", "aac", 
+            "ffmpeg", "-y", "-i", temp_output, "-i", input_video_path, 
+            "-map", "0:v", "-map", "1:a?", "-c:v", "libx264", "-c:a", "aac", 
             final_output
         ], check=True, capture_output=True)
         return final_output
     except Exception as e:
-        print(f"Khởi tạo ffmpeg thất bại: {e}")
+        print(f"Ffmpeg error: {e}")
         return temp_output
 
 with gr.Blocks(title="Smart Logo Masker") as demo:
@@ -127,20 +127,23 @@ with gr.Blocks(title="Smart Logo Masker") as demo:
         vid2 = gr.Video(label="Video Đã Che Logo", elem_id="vid2", interactive=False)
         
     with gr.Row():
+        conf_slider = gr.Slider(0.1, 1.0, value=0.75, label="Độ tin cậy (Confidence)")
+        iou_slider = gr.Slider(0.1, 1.0, value=0.45, label="Độ trùng lặp (IoU)")
+        blur_slider = gr.Slider(1, 199, step=2, value=99, label="Cường độ làm mờ (Blur)")
+        mask_mode = gr.Dropdown(["blur", "solid"], value="blur", label="Chế độ che")
+
+    with gr.Row():
         play_btn = gr.Button("▶️ Phát cùng lúc", variant="primary")
         pause_btn = gr.Button("⏸️ Dừng cùng lúc", variant="stop")
         
-    # Nút xử lý video từ file upload gốc sang video đã che
     process_btn = gr.Button("🤖 Bắt Đầu Xử lý Che Logo (Phát Lại Sau Khi Xong)")
     
-    # Gắn sự kiện click bằng Javascript để can thiệp trực tiếp vào 2 thẻ Video HTML
     play_btn.click(fn=None, inputs=None, outputs=None, js=js_play)
     pause_btn.click(fn=None, inputs=None, outputs=None, js=js_pause)
     
-    # Gắn sự kiện xử lý video qua backend Python, sau đó trả output ra vid2
     process_btn.click(
         fn=process_video,
-        inputs=[vid1],
+        inputs=[vid1, conf_slider, iou_slider, blur_slider, mask_mode],
         outputs=[vid2]
     )
 
