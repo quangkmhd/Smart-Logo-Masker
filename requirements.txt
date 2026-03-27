@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+python-multipart
+celery
+redis
+python-dotenv
+gradio
+requests
+filetype
+pydantic-settings
+ultralytics
+opencv-python
+numpy

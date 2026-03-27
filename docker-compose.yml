@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - logo-network
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - MODEL_PATH=runs/segment/logo_masker_model/weights/best.pt
+      - UPLOAD_DIR=data/uploads
+      - RESULT_DIR=data/results
+    volumes:
+      - .:/app
+    depends_on:
+      - redis
+    networks:
+      - logo-network
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    command: python app_web.py
+    ports:
+      - "7860:7860"
+    environment:
+      - API_URL=http://api:8000/api/v1
+    depends_on:
+      - api
+    networks:
+      - logo-network
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    command: celery -A src.worker.celery_app worker --loglevel=info --concurrency=1
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - MODEL_PATH=runs/segment/logo_masker_model/weights/best.pt
+    volumes:
+      - .:/app
+    depends_on:
+      - redis
+    networks:
+      - logo-network
+
+networks:
+  logo-network:
+    driver: bridge
+
+volumes:
+  uploads:
+  results:
