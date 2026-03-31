@@ -2,14 +2,14 @@
 
 ![Smart Logo Masker Showcase](asset/img2.png)
 
-Dự án này sử dụng YOLOv26 Segmentation để tự động phát hiện và che cho các logo cá độ (ví dụ: 1xbet, melbet, v.v.) trong video.
+This project uses YOLOv26 Segmentation to automatically detect and mask betting logos (e.g., 1xbet, melbet, etc.) in videos.
 
-## 1. Cài đặt Dữ liệu (Setup Data)
+## 1. Setup Data
 
-Quy trình chuẩn bị dữ liệu bao gồm việc chuyển đổi các nhãn từ định dạng LabelMe (JSON) sang định dạng YOLO.
+The data preparation process involves converting labels from LabelMe format (JSON) to YOLO format.
 
-### Cấu trúc thư mục đầu vào:
-Đặt dữ liệu thô vào thư mục `data_raw/Round_01/`. Mỗi thư mục con nên đại diện cho một class hoặc chứa tên class trong tên thư mục.
+### Input Directory Structure:
+Place raw data in the `data_raw/Round_01/` directory. Each subdirectory should represent a class or contain the class name in the subdirectory's name.
 ```text
 data_raw/Round_01/
 ├── 1xbet/
@@ -20,35 +20,35 @@ data_raw/Round_01/
 │   ├── img2.json
 ```
 
-### Chạy script chuẩn bị:
-Sử dụng script `prepare_data.py` để tự động phân chia tập train/val và tạo file `data.yaml`.
+### Run Preparation Script:
+Use the `prepare_data.py` script to automatically split train/val sets and create the `data.yaml` file.
 ```bash
 python3 prepare_data.py
 ```
-Dữ liệu đã sẵn sàng sẽ nằm trong thư mục `dataset/`.
+Pre-processed data will be located in the `dataset/` directory.
 
 ---
 
-## 2. Huấn luyện Mô hình (Training)
+## 2. Training (Training)
 
-Để bắt đầu huấn luyện, hãy chạy file `train_yolo.py`. Script này đã được cấu hình với các tham số tối ưu cho segmentation.
+To start training, run the `train_yolo.py` file. This script is pre-configured with optimal parameters for segmentation.
 
 ```bash
 python3 train_yolo.py
 ```
 
-### Các thông số quan trọng trong `train_yolo.py`:
-- `model`: Model gốc (mặc định là `yolo26x-seg.pt`).
-- `epochs`: Số vòng lặp huấn luyện (mặc định 300).
-- `imgsz`: Kích thước ảnh đầu vào (640).
-- `batch`: Số lượng ảnh trong một mẻ (giảm xuống nếu bị tràn RAM/VRAM).
-- `patience`: Tự động dừng nếu model không cải thiện sau $N$ epoch (mặc định 50).
+### Key Parameters in `train_yolo.py`:
+- `model`: Base model (default is `yolo26x-seg.pt`).
+- `epochs`: Training epochs (default 300).
+- `imgsz`: Input image size (640).
+- `batch`: Batch size (reduce if you run out of RAM/VRAM).
+- `patience`: Automatically stops training if the model doesn't improve after $N$ epochs (default 50).
 
 ---
 
-## 3. Dự đoán và Sử dụng (Inference)
+## 3. Inference (Inference)
 
-Sau khi huấn luyện xong, bạn có thể sử dụng file `predict.py` để chạy trên dữ liệu mới.
+Once training is complete, you can use the `predict.py` file to run on new data.
 
 ```bash
 python3 predict.py --source path/to/images --weights runs/segment/logo_masker_model/weights/best.pt --conf 0.75
@@ -56,36 +56,54 @@ python3 predict.py --source path/to/images --weights runs/segment/logo_masker_mo
 
 ---
 
-## 4. Điều chỉnh Thông số (Parameter Tuning)
+## 4. Parameter Tuning (Parameter Tuning)
 
-| Tham số | Ý nghĩa | Lời khuyên |
+| Parameter | Meaning | Advice |
 | :--- | :--- | :--- |
-| `conf` | Ngưỡng tin cậy | Tăng lên (0.8+) nếu thấy nhiều logo mask sai. Giảm xuống nếu model bỏ sót logo. |
-| `iou` | Ngưỡng NMS | Điều chỉnh nếu có nhiều mask chồng chéo cho cùng một logo. |
-| `augmentations` | Tăng cường dữ liệu | Trong `train_yolo.py`, các thông số như `mosaic`, `mixup`, `copy_paste` giúp model học tốt hơn trong môi trường phức tạp. |
-| `retina_masks` | Mask độ phân giải cao | Dùng `--retina_masks` trong `predict.py` để đường viền mask mịn hơn (nhưng chậm hơn). |
+| `conf` | Confidence Threshold | Increase (0.8+) if you see many false masks. Decrease if the model misses logos. |
+| `iou` | NMS Threshold | Adjust if there are multiple overlapping masks for the same logo. |
+| `augmentations` | Data Augmentation | In `train_yolo.py`, parameters like `mosaic`, `mixup`, `copy_paste` help the model learn better in complex environments. |
+| `retina_masks` | High Resolution Masks | Use `--retina_masks` in `predict.py` for smoother mask edges (but slower). |
 
 ---
 
-## 5. Lời khuyên về Dữ liệu Background (Background Data Advice) 💡
+## 5. Background Data Advice 💡
 
-Để giảm thiểu tình trạng **Dương tính giả (False Positives)** - tức là model nhận nhầm vật thể khác là logo (ví dụ: một chiếc áo sọc hay biển báo giao thông), việc thêm dữ liệu background là cực kỳ quan trọng.
+Adding background data is crucial for reducing **False Positives** - where the model misidentifies other objects as logos (e.g., striped shirts or traffic signs).
 
-### Tại sao cần Background Data?
-YOLO sẽ được học rằng "trong những bức ảnh này KHÔNG có logo nào cả". Điều này giúp model "tỉnh táo" hơn khi gặp các hình ảnh bình thường.
+### Why do you need Background Data?
+YOLO will learn that "in these images, there are NO logos". This makes the model more "alert" when encountering normal images.
 
-### Cách thêm Background Data:
-1. **Dữ liệu**: Chọn các hình ảnh trông giống môi trường thực tế (sân vận động, đường phố, đám đông) nhưng **không chứa bất kỳ logo nào** mà bạn đang train.
-2. **Quy trình nhãn**:
-   - Đối với ảnh background, bạn chỉ cần tạo một file `.txt` trống (không chứa dòng nào) có cùng tên với ảnh trong thư mục `labels`.
-   - Hoặc đơn giản là để ảnh vào thư mục `images` mà không có file `.txt` tương ứng trong `labels` (YOLO sẽ tự hiểu đó là background).
-3. **Tỷ lệ**: Nên chiếm khoảng **10% - 15%** tổng số lượng dataset của bạn.
-4. **Mẹo nhỏ**: Nếu model của bạn hay bị nhận nhầm một vật thể cố định nào đó (ví dụ: logo hãng giày Nike bị nhận nhầm là 1xbet), hãy chụp ảnh vật thể đó và đưa vào làm background images.
+### How to add Background Data:
+1. **Data**: Choose images that look like the real environment (stadiums, streets, crowds) but **do not contain any logos** you are training.
+2. **Labeling Process**:
+   - For background images, just create an empty `.txt` file (no content) with the same name as the image in the `labels` directory.
+   - Alternatively, simply place images in the `images` directory without a corresponding `.txt` file in `labels` (YOLO automatically interprets this as background).
+3. **Ratio**: It should account for approximately **10% - 15%** of your total dataset size.
+4. **Small Tip**: If your model often misidentifies a fixed object (e.g., a Nike logo is misidentified as 1xbet), take pictures of that object and include them as background images.
 
 ---
 
-## Theo dõi quá trình huấn luyện
-Bạn có thể sử dụng TensorBoard để theo dõi các chỉ số (mAP, loss):
+## 6. Hard Negative Mining 🔍
+
+If you want to improve model quality by proactively collecting "hard images" (images the model is likely to incorrectly predict as logos), use the Hard Negative Miner tool:
+
+```bash
+python3 src/services/hard_negative_miner.py
+```
+
+This tool automatically:
+1. Downloads videos from YouTube (like CNN, football matches).
+2. Runs predictions with your current model.
+3. Only takes images that the model **thinks have a logo**, then you can filter out mispredictions to use as background data.
+4. Uses these images in the background set for retraining (Retrain).
+
+See detailed instructions at: [docs/hard_negative_miner.md](docs/hard_negative_miner.md)
+
+---
+
+## Monitor Training Progress
+You can use TensorBoard to monitor metrics (mAP, loss):
 ```bash
 tensorboard --logdir runs
 ```
