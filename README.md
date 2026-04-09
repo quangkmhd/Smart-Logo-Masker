@@ -1,6 +1,11 @@
 # Smart Logo Masker 🛡️
 
-![Smart Logo Masker Showcase](asset/img2.png)
+![Smart Logo Masker Showcase](assets/demo.png)
+
+![Smart Logo Masker Showcase](assets/img2.png)
+
+
+
 
 This project uses YOLOv26 Segmentation to automatically detect and mask betting logos (e.g., 1xbet, melbet, etc.) in videos.
 
